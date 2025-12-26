@@ -3,8 +3,7 @@
 import { Navbar } from "@/components/landing/navbar"
 import { Footer } from "@/components/landing/footer"
 import { LandingHero } from "@/components/landing/hero-section"
-import { StoryInput } from "@/components/landing/story-input"
-import { CreateButton } from "@/components/landing/create-button"
+import { ComicCreationForm } from "@/components/landing/comic-creation-form"
 import { useState, useEffect } from "react"
 
 export default function Home() {
@@ -43,28 +42,20 @@ export default function Home() {
           <div className="max-w-xl mx-auto lg:mx-0 w-full z-10">
             <LandingHero />
 
-            <div className="space-y-4 sm:space-y-5 mt-4 sm:mt-5">
-              <div className="opacity-0 animate-fade-in-up animation-delay-100">
-                <StoryInput
-                  prompt={prompt}
-                  setPrompt={setPrompt}
-                  style={style}
-                  setStyle={setStyle}
-                  characterFiles={characterFiles}
-                  setCharacterFiles={setCharacterFiles}
-                  isLoading={isLoading}
-                />
-              </div>
-              <div className="opacity-0 animate-fade-in-up animation-delay-200">
-                <CreateButton
-                  prompt={prompt}
-                  style={style}
-                  characterFiles={characterFiles}
-                  isLoading={isLoading}
-                  setIsLoading={setIsLoading}
-                />
-              </div>
-            </div>
+             <div className="space-y-4 sm:space-y-5 mt-4 sm:mt-5">
+               <div className="opacity-0 animate-fade-in-up animation-delay-100">
+                 <ComicCreationForm
+                   prompt={prompt}
+                   setPrompt={setPrompt}
+                   style={style}
+                   setStyle={setStyle}
+                   characterFiles={characterFiles}
+                   setCharacterFiles={setCharacterFiles}
+                   isLoading={isLoading}
+                   setIsLoading={setIsLoading}
+                 />
+               </div>
+             </div>
           </div>
         </div>
 

@@ -42,6 +42,12 @@ export async function updatePage(pageId: string, generatedImageUrl: string): Pro
     .where(eq(pages.id, pageId));
 }
 
+export async function updateStory(storyId: string, data: { title?: string; description?: string }): Promise<void> {
+  await db.update(stories)
+    .set({ ...data, updatedAt: new Date() })
+    .where(eq(stories.id, storyId));
+}
+
 export async function getStoryWithPages(storyId: string): Promise<{ story: Story; pages: Page[] } | null> {
   const storyResult = await db.select().from(stories).where(eq(stories.id, storyId)).limit(1);
 
@@ -82,13 +88,46 @@ export async function getStoryWithPagesBySlug(slug: string): Promise<{ story: St
 }
 
 export async function getStoryCharacterImages(storyId: string): Promise<string[]> {
-  const storyPages = await db.select({ characterImageUrls: pages.characterImageUrls })
+  const storyPages = await db.select({
+    characterImageUrls: pages.characterImageUrls,
+    pageNumber: pages.pageNumber
+  })
     .from(pages)
-    .where(eq(pages.storyId, storyId));
+    .where(eq(pages.storyId, storyId))
+    .orderBy(pages.pageNumber);
 
-  // Flatten all character URLs from all pages and remove duplicates
-  const allUrls = storyPages.flatMap(page => page.characterImageUrls);
-  return [...new Set(allUrls)]; // Remove duplicates
+  // Flatten all character URLs from all pages, keeping order by page number
+  const allUrls: string[] = [];
+  const seenUrls = new Set<string>();
+
+  for (const page of storyPages) {
+    for (const url of page.characterImageUrls) {
+      if (!seenUrls.has(url)) {
+        seenUrls.add(url);
+        allUrls.push(url);
+      }
+    }
+  }
+
+  return allUrls;
+}
+
+export async function getLastPageImage(storyId: string): Promise<string | null> {
+  const allPages = await db.select({ generatedImageUrl: pages.generatedImageUrl, pageNumber: pages.pageNumber })
+    .from(pages)
+    .where(eq(pages.storyId, storyId))
+    .orderBy(pages.pageNumber);
+
+  if (allPages.length === 0) return null;
+
+  // Find the last page that has a generated image
+  for (let i = allPages.length - 1; i >= 0; i--) {
+    if (allPages[i].generatedImageUrl) {
+      return allPages[i].generatedImageUrl;
+    }
+  }
+
+  return null;
 }
 
 export async function getNextPageNumber(storyId: string): Promise<number> {
@@ -102,4 +141,8 @@ export async function getNextPageNumber(storyId: string): Promise<number> {
   }
 
   return Math.max(...storyPages.map(p => p.pageNumber)) + 1;
+}
+
+export async function deletePage(pageId: string): Promise<void> {
+  await db.delete(pages).where(eq(pages.id, pageId));
 }

@@ -6,15 +6,17 @@ import { Github, Key, BookOpen, User, Plus } from "lucide-react";
 import Link from "next/link";
 import { ApiKeyModal } from "@/components/api-key-modal";
 import { SignInButton, SignedIn, SignedOut, useAuth } from "@clerk/nextjs";
+import { useApiKey } from "@/hooks/use-api-key";
 
 export function Navbar() {
   const [showApiModal, setShowApiModal] = useState(false);
 
   const { isLoaded } = useAuth();
   const pathname = usePathname();
+  const [, setApiKey] = useApiKey();
 
   const handleApiKeySubmit = (key: string) => {
-    localStorage.setItem("together_api_key", key);
+    setApiKey(key);
     setShowApiModal(false);
   };
 

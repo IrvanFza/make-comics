@@ -3,14 +3,18 @@ import Together from "together-ai";
 import { auth } from "@clerk/nextjs/server";
 import {
   updatePage,
+  updateStory,
   createStory,
   createPage,
   getNextPageNumber,
   getStoryById,
+  getLastPageImage,
+  getStoryCharacterImages,
 } from "@/lib/db-actions";
 import { freeTierRateLimit } from "@/lib/rate-limit";
 import { COMIC_STYLES } from "@/lib/constants";
 import { uploadImageToS3 } from "@/lib/s3-upload";
+import { buildComicPrompt } from "@/lib/prompt";
 
 const NEW_MODEL = false;
 
@@ -21,6 +25,8 @@ const IMAGE_MODEL = NEW_MODEL
 const FIXED_DIMENSIONS = NEW_MODEL
   ? { width: 896, height: 1200 }
   : { width: 864, height: 1184 };
+
+const TEXT_MODEL = "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo";
 
 export async function POST(request: NextRequest) {
   try {
@@ -88,9 +94,11 @@ export async function POST(request: NextRequest) {
 
     let page;
     let story;
+    let referenceImages: string[] = [];
 
     if (storyId) {
-      const story = await getStoryById(storyId);
+      // Continuation: get previous page image and story character images
+      story = await getStoryById(storyId);
       if (!story) {
         return NextResponse.json({ error: "Story not found" }, { status: 404 });
       }
@@ -102,7 +110,20 @@ export async function POST(request: NextRequest) {
         prompt,
         characterImageUrls: characterImages,
       });
+
+      // Get previous page image for style consistency (unless it's page 1)
+      if (nextPageNumber > 1) {
+        const lastPageImage = await getLastPageImage(storyId);
+        if (lastPageImage) {
+          referenceImages.push(lastPageImage);
+        }
+      }
+
+      // For continuation pages, character images are sent from frontend
+      // No need to fetch separately - frontend handles selection
     } else {
+      // New story: no previous page reference
+      // Create story with temporary title, will update with generated title
       story = await createStory({
         title: prompt.length > 50 ? prompt.substring(0, 50) + "..." : prompt,
         description: undefined,
@@ -118,77 +139,103 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    // Use only the character images sent from the frontend
+    referenceImages.push(...characterImages);
+
     const dimensions = FIXED_DIMENSIONS;
-    const styleInfo = COMIC_STYLES.find((s) => s.id === style);
-    const styleDesc = styleInfo?.prompt || COMIC_STYLES[2].prompt;
 
-    const continuationContext =
-      isContinuation && previousContext
-        ? `\nCONTINUATION CONTEXT:\nThis is a continuation of an existing story. The previous page showed: ${previousContext}\nMaintain visual consistency with the previous panels. Continue the narrative naturally.\n`
-        : "";
-
-    let characterSection = "";
-    if (characterImages.length > 0) {
-      if (characterImages.length === 1) {
-        characterSection = `
-CRITICAL FACE CONSISTENCY INSTRUCTIONS:
-- REFERENCE CHARACTER: Use the uploaded image as EXACT reference for the protagonist's face and appearance
-- FACE MATCHING: The character's face must be IDENTICAL to the reference image - same eyes, nose, mouth, hair, facial structure
-- APPEARANCE PRESERVATION: Maintain exact skin tone, hair color/style, eye color, and distinctive facial features
-- CHARACTER CONSISTENCY: This exact same character must appear in ALL 5 panels with the same face throughout
-- STYLE APPLICATION: Apply ${style} comic art style to the body/pose/action but KEEP THE FACE EXACTLY AS IN THE REFERENCE IMAGE
-- NO VARIATION: Do not alter, modify, or change the character's face in any way from the reference`;
-      } else if (characterImages.length === 2) {
-        characterSection = `
-CRITICAL DUAL CHARACTER FACE CONSISTENCY INSTRUCTIONS:
-- CHARACTER 1 REFERENCE: Use the FIRST uploaded image as EXACT reference for Character 1's face and appearance
-- CHARACTER 2 REFERENCE: Use the SECOND uploaded image as EXACT reference for Character 2's face and appearance
-- FACE MATCHING: Both characters' faces must be IDENTICAL to their respective reference images
-- VISUAL DISTINCTION: Keep both characters clearly visually distinct with their unique faces, hair, and features
-- CONSISTENT PRESENCE: Both characters must appear together in at least 4 of the 5 panels
-- STYLE APPLICATION: Apply ${style} comic art style while maintaining EXACT facial features from references
-- NO FACE VARIATION: Never alter or modify either character's face from their reference images`;
-      }
-    }
-
-    const systemPrompt = `Professional comic book page illustration.
-${continuationContext}
-${characterSection}
-
-CHARACTER CONSISTENCY RULES (HIGHEST PRIORITY):
-- If reference images are provided, the characters' FACES must be 100% identical to the reference images
-- Never change hair color, eye color, facial structure, or distinctive features
-- Apply comic style to body/pose/action but preserve exact facial appearance
-- Same character must look identical across all panels they appear in
-
-TEXT AND LETTERING (CRITICAL):
-- All text in speech bubbles must be PERFECTLY CLEAR, LEGIBLE, and correctly spelled
-- Use bold clean comic book lettering, large and easy to read
-- Speech bubbles: crisp white fill, solid black outline, pointed tail toward speaker
-- Keep dialogue SHORT: maximum 1-2 sentences per bubble
-- NO blurry, warped, or unreadable text
-
-PAGE LAYOUT:
-5-panel comic page arranged as:
-[Panel 1] [Panel 2] — top row, 2 equal panels
-[    Panel 3      ] — middle row, 1 large cinematic hero panel
-[Panel 4] [Panel 5] — bottom row, 2 equal panels
-- Solid black panel borders with clean white gutters between panels
-- Each panel clearly separated and distinct
-
-ART STYLE:
-${styleDesc}
-${characterSection}
-
-COMPOSITION:
-- Vary camera angles across panels: close-up, medium shot, wide establishing shot
-- Natural visual flow: left-to-right, top-to-bottom reading order
-- Dynamic character poses with clear expressive acting
-- Detailed backgrounds matching the scene and mood`;
-
-    const fullPrompt = `${systemPrompt}\n\nSTORY:\n${prompt}`;
+    const fullPrompt = buildComicPrompt({
+      prompt,
+      style,
+      characterImages,
+      isContinuation,
+      previousContext,
+    });
 
     const client = new Together({ apiKey: finalApiKey });
+
+    // Generate title and description in parallel with image generation (only for new stories)
+    let titleGenerationPromise: Promise<{
+      title: string;
+      description: string;
+    }> | null = null;
+    if (!storyId) {
+      titleGenerationPromise = (async () => {
+        try {
+          const titlePrompt = `Based on this comic book prompt, generate a compelling title and description for the comic book.
+
+Prompt: "${prompt}"
+Style: ${COMIC_STYLES.find((s) => s.id === style)?.name || style}
+
+Generate:
+1. A catchy, engaging title (maximum 60 characters)
+2. A brief description (2-3 sentences, maximum 200 characters)
+
+Format your response as JSON:
+{
+  "title": "Title here",
+  "description": "Description here"
+}
+
+Only return the JSON, no other text.`;
+
+          const textResponse = await client.chat.completions.create({
+            model: TEXT_MODEL,
+            messages: [
+              {
+                role: "system",
+                content:
+                  "You are a creative assistant that generates compelling comic book titles and descriptions. Always respond with valid JSON only.",
+              },
+              {
+                role: "user",
+                content: titlePrompt,
+              },
+            ],
+            temperature: 0.8,
+            max_tokens: 300,
+          });
+
+          const content = textResponse.choices[0]?.message?.content?.trim();
+          if (!content) {
+            throw new Error("No response from text generation");
+          }
+
+          // Extract JSON from response (in case there's extra text)
+          const jsonMatch = content.match(/\{[\s\S]*\}/);
+          if (!jsonMatch) {
+            throw new Error("No JSON found in response");
+          }
+
+          const parsed = JSON.parse(jsonMatch[0]);
+          const rawTitle =
+            parsed.title?.trim() ||
+            (prompt.length > 50 ? prompt.substring(0, 50) + "..." : prompt);
+          const rawDescription = parsed.description?.trim();
+
+          // Enforce character limits
+          const title =
+            rawTitle.length > 60 ? rawTitle.substring(0, 57) + "..." : rawTitle;
+          const description =
+            rawDescription && rawDescription.length > 200
+              ? rawDescription.substring(0, 197) + "..."
+              : rawDescription;
+
+          return {
+            title,
+            description: description || undefined,
+          };
+        } catch (error) {
+          console.error("Error generating title and description:", error);
+          // Fallback to prompt-based title
+          return {
+            title:
+              prompt.length > 50 ? prompt.substring(0, 50) + "..." : prompt,
+            description: undefined,
+          };
+        }
+      })();
+    }
 
     let response;
     try {
@@ -199,7 +246,7 @@ COMPOSITION:
         height: dimensions.height,
         temperature: 0.1, // Lower temperature for more consistent face matching
         reference_images:
-          characterImages.length > 0 ? characterImages : undefined,
+          referenceImages.length > 0 ? referenceImages : undefined,
       });
     } catch (error) {
       console.error("Together AI API error:", error);
@@ -245,8 +292,36 @@ COMPOSITION:
     const imageUrl = response.data[0].url;
 
     // Upload image to S3 for permanent storage
-    const s3Key = `${storyId || story!.id}/page-${page.pageNumber}-${Date.now()}.jpg`;
+    const s3Key = `${storyId || story!.id}/page-${
+      page.pageNumber
+    }-${Date.now()}.jpg`;
     const s3ImageUrl = await uploadImageToS3(imageUrl, s3Key);
+
+    // Wait for title/description generation if it's a new story
+    let generatedTitle: string | undefined;
+    let generatedDescription: string | undefined;
+    if (titleGenerationPromise) {
+      const titleData = await titleGenerationPromise;
+      generatedTitle = titleData.title;
+      generatedDescription = titleData.description;
+
+      // Update story with generated title and description
+      try {
+        await updateStory(story!.id, {
+          title: generatedTitle,
+          description: generatedDescription,
+        });
+        // Update story object for response
+        story = {
+          ...story,
+          title: generatedTitle,
+          description: generatedDescription,
+        };
+      } catch (dbError) {
+        console.error("Error updating story title/description:", dbError);
+        // Continue even if update fails
+      }
+    }
 
     // Update page in database with S3 URL
     try {
@@ -267,6 +342,8 @@ COMPOSITION:
           storySlug: story!.slug,
           pageId: page.id,
           pageNumber: page.pageNumber,
+          title: generatedTitle || story!.title,
+          description: generatedDescription || story!.description,
         };
 
     return NextResponse.json(responseData);

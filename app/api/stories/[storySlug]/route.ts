@@ -10,19 +10,23 @@ export async function GET(
   { params }: { params: Promise<{ storySlug: string }> }
 ) {
   try {
-    const { userId } = await auth();
+    const authResult = await auth();
+    const { userId } = authResult;
 
-    if (!userId) {
-      return NextResponse.json(
-        { error: "Authentication required" },
-        { status: 401 }
-      );
-    }
+    console.log('API: auth result:', authResult);
+    console.log('API: userId type:', typeof userId, 'value:', userId);
+    console.log('API: timestamp:', new Date().toISOString());
 
     const { storySlug: slug } = await params;
 
     // Special case: if slug is "all", return user's stories for debugging
     if (slug === "all") {
+      if (!userId) {
+        return NextResponse.json(
+          { error: "Authentication required for this endpoint" },
+          { status: 401 }
+        );
+      }
       const userStories = await db.select().from(stories).where(eq(stories.userId, userId));
       return NextResponse.json({
         message: "User stories",
@@ -47,14 +51,14 @@ export async function GET(
     }
 
     // Check if the story belongs to the authenticated user
-    if (result.story.userId !== userId) {
-      return NextResponse.json(
-        { error: "Access denied" },
-        { status: 403 }
-      );
-    }
+    const isOwner = userId ? result.story.userId === userId : false;
 
-    return NextResponse.json(result);
+    // Return the story data with ownership information
+    const responseData = {
+      ...result,
+      isOwner,
+    };
+    return NextResponse.json(responseData);
   } catch (error) {
     console.error("Error fetching story:", error);
     return NextResponse.json(

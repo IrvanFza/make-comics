@@ -13,6 +13,7 @@ import {
   DialogDescription,
 } from "@/components/ui/dialog";
 import { TOGETHER_LINK } from "@/lib/utils";
+import { useApiKey } from "@/hooks/use-api-key";
 
 interface ApiKeyModalProps {
   isOpen: boolean;
@@ -21,38 +22,35 @@ interface ApiKeyModalProps {
 }
 
 export function ApiKeyModal({ isOpen, onClose, onSubmit }: ApiKeyModalProps) {
-  const [apiKey, setApiKey] = useState("");
+  const [apiKeyInput, setApiKeyInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [existingKey, setExistingKey] = useState<string | null>(null);
+  const [existingKey, setApiKey] = useApiKey();
 
   useEffect(() => {
-    if (typeof window !== "undefined" && isOpen) {
-      const storedKey = localStorage.getItem("together_api_key");
-      setExistingKey(storedKey);
-      setApiKey((current) => {
-        if (storedKey && current === "") {
-          return storedKey;
+    if (isOpen) {
+      setApiKeyInput((current) => {
+        if (existingKey && current === "") {
+          return existingKey;
         }
         return current;
       });
     }
-  }, [isOpen]);
+  }, [isOpen, existingKey]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!apiKey.trim()) return;
+    if (!apiKeyInput.trim()) return;
 
     setIsLoading(true);
     await new Promise((resolve) => setTimeout(resolve, 500));
     setIsLoading(false);
-    onSubmit(apiKey.trim());
-    setApiKey("");
+    onSubmit(apiKeyInput.trim());
+    setApiKeyInput("");
   };
 
   const handleDelete = () => {
-    localStorage.removeItem("together_api_key");
-    setExistingKey(null);
-    setApiKey("");
+    setApiKey(null);
+    setApiKeyInput("");
     onClose();
   };
 
@@ -83,15 +81,15 @@ export function ApiKeyModal({ isOpen, onClose, onSubmit }: ApiKeyModalProps) {
           <div className="relative">
             <Input
               type="password"
-              value={apiKey}
-              onChange={(e) => setApiKey(e.target.value)}
+              value={apiKeyInput}
+              onChange={(e) => setApiKeyInput(e.target.value)}
               placeholder={existingKey ? "Your current API key" : "Enter your API key..."}
               className="bg-secondary border-border/50 text-white placeholder-muted-foreground py-5 pr-10"
             />
-            {apiKey && (
+            {apiKeyInput && (
               <button
                 type="button"
-                onClick={() => setApiKey("")}
+                onClick={() => setApiKeyInput("")}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-white transition-colors"
               >
                 <X className="w-4 h-4" />
@@ -120,7 +118,7 @@ export function ApiKeyModal({ isOpen, onClose, onSubmit }: ApiKeyModalProps) {
             </Button>
             <Button
               type="submit"
-              disabled={!apiKey.trim() || isLoading}
+              disabled={!apiKeyInput.trim() || isLoading}
               className="flex-1 gap-2 bg-white hover:bg-neutral-200 text-black"
             >
               {isLoading ? "Validating..." : "Continue"}

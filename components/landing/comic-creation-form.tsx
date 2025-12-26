@@ -1,13 +1,17 @@
 "use client";
 
-import { useState } from "react";
-
-import { useRef, useEffect } from "react";
-import { Upload, X, Check } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Upload, X, Check, ArrowRight, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
+import { useS3Upload } from "next-s3-upload";
+import { useAuth, SignInButton } from "@clerk/nextjs";
 import { COMIC_STYLES } from "@/lib/constants";
+import { useKeyboardShortcut } from "@/hooks/use-keyboard-shortcut";
+import { useApiKey } from "@/hooks/use-api-key";
 
-interface StoryInputProps {
+interface ComicCreationFormProps {
   prompt: string;
   setPrompt: (prompt: string) => void;
   style: string;
@@ -15,9 +19,10 @@ interface StoryInputProps {
   characterFiles: File[];
   setCharacterFiles: (files: File[]) => void;
   isLoading: boolean;
+  setIsLoading: (loading: boolean) => void;
 }
 
-export function StoryInput({
+export function ComicCreationForm({
   prompt,
   setPrompt,
   style,
@@ -25,17 +30,41 @@ export function StoryInput({
   characterFiles,
   setCharacterFiles,
   isLoading,
-}: StoryInputProps) {
+  setIsLoading,
+}: ComicCreationFormProps) {
+  const router = useRouter();
+  const [loadingStep, setLoadingStep] = useState(0);
+  const { toast } = useToast();
+  const { uploadToS3 } = useS3Upload();
+  const { isSignedIn, isLoaded } = useAuth();
+  const [apiKey] = useApiKey();
+  const hasApiKey = !!apiKey;
   const [previews, setPreviews] = useState<string[]>([]);
   const [showPreview, setShowPreview] = useState<number | null>(null);
   const [showStyleDropdown, setShowStyleDropdown] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
 
   useEffect(() => {
     if (isLoading) {
       setShowStyleDropdown(false);
     }
   }, [isLoading]);
+
+  useEffect(() => {
+    // Auto-focus the textarea when component mounts
+    if (textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, []);
+
+  // Keyboard shortcut for form submission
+  useKeyboardShortcut(() => {
+    if (!isLoading && prompt.trim()) {
+      handleCreate();
+    }
+  }, { disabled: isLoading });
 
   const handleFiles = (newFiles: FileList | null) => {
     if (!newFiles) return;
@@ -84,6 +113,93 @@ export function StoryInput({
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
+  const handleCreate = async () => {
+    if (!prompt.trim()) {
+      toast({
+        title: "Prompt required",
+        description: "Please enter a prompt to generate your comic",
+        variant: "destructive",
+        duration: 3000,
+      });
+      return;
+    }
+
+    setIsLoading(true);
+    setLoadingStep(0);
+
+    try {
+      if (!apiKey) {
+        toast({
+          title: "API key required",
+          description: "Please add your API key to generate comics.",
+          variant: "destructive",
+          duration: 3000,
+        });
+        setIsLoading(false);
+        return;
+      }
+
+      const characterUploads = await Promise.all(
+        characterFiles.map((file) => uploadToS3(file).then(({ url }) => url))
+      );
+
+      // Use API to create story and generate first page
+      const response = await fetch("/api/generate-comic", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          prompt,
+          apiKey,
+          style,
+          characterImages: characterUploads,
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        if (response.status === 429 && errorData.isRateLimited) {
+          throw new Error(errorData.error);
+        }
+        throw new Error(errorData.error || "Failed to create story");
+      }
+
+      const result = await response.json();
+
+      // Redirect to the story editor using slug
+      router.push(`/editor/${result.storySlug}`);
+    } catch (error) {
+      console.error("Error creating comic:", error);
+      toast({
+        title: "Creation failed",
+        description:
+          error instanceof Error
+            ? error.message
+            : "Failed to create comic. Please try again.",
+        variant: "destructive",
+        duration: 4000,
+      });
+      setIsLoading(false);
+    }
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+    const isEnter = e.key === "Enter" || e.key === "\n" || e.keyCode === 13;
+    const isModifierPressed = e.shiftKey || e.ctrlKey || e.metaKey; // metaKey for Cmd on Mac
+
+    if (isEnter && isModifierPressed) {
+      e.preventDefault();
+      handleCreate();
+    }
+  };
+
+  const loadingSteps = [
+    "Enhancing prompt...",
+    "Generating scenes...",
+    "Creating your comic...",
+  ];
+
   return (
     <>
       <div className="relative glass-panel p-0.5 sm:p-1 rounded-xl group focus-within:border-indigo/30 transition-colors">
@@ -95,6 +211,7 @@ export function StoryInput({
           </div>
 
           <textarea
+            ref={textareaRef}
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
             placeholder="A cyberpunk detective standing in neon rain, holding a glowing datapad, moody lighting, noir style..."
@@ -242,6 +359,48 @@ export function StoryInput({
           </div>
         </div>
       )}
+
+      <div className="pt-2">
+        {!isLoaded ? (
+          <div className="h-10" />
+        ) : isSignedIn ? (
+          <div className="flex items-center justify-between gap-3 w-full">
+            <Button
+              onClick={handleCreate}
+              disabled={isLoading || !prompt.trim()}
+              className="bg-white hover:bg-neutral-200 text-black px-8 py-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-3 tracking-tight"
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  <span className="text-sm font-medium tracking-tight">
+                    {loadingSteps[loadingStep]}
+                  </span>
+                </>
+              ) : (
+                <>
+                  Generate
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
+            </Button>
+            <div className="text-xs text-muted-foreground whitespace-nowrap">
+              {hasApiKey ? (
+                <>Using your API key (~$0.01 per comic)</>
+              ) : (
+                <>1 credit weekly</>
+              )}
+            </div>
+          </div>
+        ) : (
+          <SignInButton mode="modal">
+            <Button className="w-full sm:w-auto sm:min-w-40 bg-white hover:bg-neutral-200 text-black px-8 py-2 rounded-md text-sm font-medium transition-colors flex items-center justify-center gap-3 tracking-tight">
+              Login to create your comic
+              <ArrowRight className="w-4 h-4" />
+            </Button>
+          </SignInButton>
+        )}
+      </div>
     </>
   );
 }
