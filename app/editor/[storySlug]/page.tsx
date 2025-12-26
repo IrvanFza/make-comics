@@ -9,6 +9,7 @@ import { ComicCanvas } from "@/components/editor/comic-canvas";
 import { ApiKeyModal } from "@/components/api-key-modal";
 import { PageInfoSheet } from "@/components/editor/page-info-sheet";
 import { GeneratePageModal } from "@/components/editor/generate-page-modal";
+import { StoryLoader } from "@/components/ui/story-loader";
 
 interface PageData {
   id: number; // pageNumber for component compatibility
@@ -119,6 +120,67 @@ export default function StoryEditorPage() {
     setShowGenerateModal(true);
   };
 
+  const handleRedrawPage = async () => {
+    const storedKey = localStorage.getItem("together_api_key");
+    if (!storedKey) {
+      setShowApiModal(true);
+      return;
+    }
+
+    const currentPageData = pages[currentPage];
+    if (!currentPageData) return;
+
+    setLoadingPageId(currentPage);
+
+    try {
+      const response = await fetch("/api/add-page", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-api-key": storedKey,
+        },
+        body: JSON.stringify({
+          storyId: story?.slug,
+          pageId: currentPageData.dbId, // Add pageId to override existing page
+          prompt: currentPageData.prompt,
+          characterImages: currentPageData.characterUploads || [],
+        }),
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || "Failed to redraw page");
+      }
+
+      const result = await response.json();
+
+      // Update the current page with the new image
+      setPages((prevPages) =>
+        prevPages.map((page, index) =>
+          index === currentPage
+            ? { ...page, image: result.imageUrl }
+            : page
+        )
+      );
+
+      toast({
+        title: "Page redrawn successfully",
+        description: "The page has been regenerated with a fresh image.",
+        duration: 3000,
+      });
+    } catch (error) {
+      console.error("Error redrawing page:", error);
+      toast({
+        title: "Failed to redraw page",
+        description: error instanceof Error ? error.message : "Failed to redraw page",
+        variant: "destructive",
+        duration: 4000,
+      });
+    } finally {
+      setLoadingPageId(null);
+    }
+  };
+
   const handleApiKeyClick = () => {
     setShowApiModal(true);
   };
@@ -132,8 +194,6 @@ export default function StoryEditorPage() {
     }
   };
 
-
-
   const handleGeneratePage = async (data: {
     prompt: string;
     characterFiles?: File[];
@@ -146,6 +206,7 @@ export default function StoryEditorPage() {
         return;
       }
 
+      // Add new page mode
       const response = await fetch("/api/add-page", {
         method: "POST",
         headers: {
@@ -175,16 +236,20 @@ export default function StoryEditorPage() {
           prompt: data.prompt,
           characterUploads: data.characterUrls || [],
           style: story?.style || "noir",
+          dbId: result.pageId,
         },
       ]);
       setCurrentPage(pages.length);
+
       setShowGenerateModal(false);
     } catch (error) {
       console.error("Error generating page:", error);
       toast({
         title: "Failed to generate page",
         description:
-          error instanceof Error ? error.message : "Failed to generate page",
+          error instanceof Error
+            ? error.message
+            : "Failed to generate page",
         variant: "destructive",
         duration: 4000,
       });
@@ -194,7 +259,7 @@ export default function StoryEditorPage() {
   if (isLoading) {
     return (
       <div className="h-screen flex items-center justify-center bg-background">
-        <div className="text-white">Loading story...</div>
+        <StoryLoader />
       </div>
     );
   }
@@ -209,10 +274,7 @@ export default function StoryEditorPage() {
 
   return (
     <div className="h-screen flex flex-col bg-background">
-      <EditorToolbar
-        title={story.title}
-        onContinueStory={handleAddPage}
-      />
+      <EditorToolbar title={story.title} onContinueStory={handleAddPage} />
 
       <div className="flex-1 flex overflow-hidden">
         <PageSidebar
@@ -226,8 +288,15 @@ export default function StoryEditorPage() {
         <ComicCanvas
           page={pages[currentPage]}
           onInfoClick={() => setShowInfoSheet(true)}
-          onNextPage={() => setCurrentPage((prev) => (prev < pages.length - 1 ? prev + 1 : prev))}
-          onPrevPage={() => setCurrentPage((prev) => (prev > 0 ? prev - 1 : prev))}
+          onRedrawClick={handleRedrawPage}
+          onNextPage={() =>
+            setCurrentPage((prev) =>
+              prev < pages.length - 1 ? prev + 1 : prev
+            )
+          }
+          onPrevPage={() =>
+            setCurrentPage((prev) => (prev > 0 ? prev - 1 : prev))
+          }
         />
       </div>
 

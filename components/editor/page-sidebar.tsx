@@ -38,7 +38,7 @@ export function PageSidebar({
           <button
             key={page.id}
             onClick={() => onPageSelect(index)}
-            disabled={loadingPageId === page.id}
+            disabled={loadingPageId === index}
             className={`
               w-16 h-16 rounded-lg transition-all relative overflow-hidden
               ${
@@ -46,10 +46,10 @@ export function PageSidebar({
                   ? "ring-2 ring-indigo shadow-lg shadow-indigo/20"
                   : "glass-panel glass-panel-hover hover:ring-1 hover:ring-white/20"
               }
-              ${loadingPageId === page.id ? "opacity-50" : ""}
+              ${loadingPageId === index ? "opacity-50" : ""}
             `}
           >
-            {loadingPageId === page.id ? (
+            {loadingPageId === index ? (
               <div className="w-full h-full flex items-center justify-center">
                 <Loader2 className="w-6 h-6 animate-spin text-white" />
               </div>

@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Plus, Loader2 } from "lucide-react";
 import { Navbar } from "@/components/landing/navbar";
+import { StoryLoader } from "@/components/ui/story-loader";
 
 interface Story {
   id: string;
@@ -51,10 +52,7 @@ export default function StoriesPage() {
         <Navbar />
 
         <main className="flex-1 flex items-center justify-center">
-          <div className="text-center">
-            <Loader2 className="w-8 h-8 animate-spin mx-auto mb-4" />
-            <p className="text-muted-foreground">Loading your comic library...</p>
-          </div>
+          <StoryLoader text="Loading your comic library..." />
         </main>
       </div>
     );

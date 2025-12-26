@@ -1,6 +1,9 @@
 import { type NextRequest, NextResponse } from "next/server";
 import { auth } from "@clerk/nextjs/server";
 import Together from "together-ai";
+import { db } from "@/lib/db";
+import { pages } from "@/lib/schema";
+import { eq } from "drizzle-orm";
 import {
   updatePage,
   createPage,
@@ -34,7 +37,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { storyId, prompt, characterImages = [] } = await request.json();
+    const { storyId, pageId, prompt, characterImages = [] } = await request.json();
 
     if (!storyId || !prompt) {
       return NextResponse.json(
@@ -76,13 +79,35 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const nextPageNumber = await getNextPageNumber(story.id);
-    const page = await createPage({
-      storyId: story.id,
-      pageNumber: nextPageNumber,
-      prompt,
-      characterImageUrls: characterImages,
-    });
+    let page;
+    let pageNumber;
+    let isRedraw = false;
+
+    if (pageId) {
+      // Redraw mode: update existing page
+      isRedraw = true;
+      const storyData = await getStoryWithPagesBySlug(storyId);
+      if (!storyData) {
+        return NextResponse.json({ error: "Story not found" }, { status: 404 });
+      }
+
+      const existingPage = storyData.pages.find(p => p.id === pageId);
+      if (!existingPage) {
+        return NextResponse.json({ error: "Page not found" }, { status: 404 });
+      }
+
+      page = existingPage;
+      pageNumber = existingPage.pageNumber;
+    } else {
+      // Add new page mode
+      pageNumber = await getNextPageNumber(story.id);
+      page = await createPage({
+        storyId: story.id,
+        pageNumber,
+        prompt,
+        characterImageUrls: characterImages,
+      });
+    }
 
     const dimensions = FIXED_DIMENSIONS;
 
@@ -90,10 +115,22 @@ export async function POST(request: NextRequest) {
     let referenceImages: string[] = [];
 
     // Get previous page image for style consistency (unless it's page 1)
-    if (nextPageNumber > 1) {
-      const lastPageImage = await getLastPageImage(story.id);
-      if (lastPageImage) {
-        referenceImages.push(lastPageImage);
+    if (pageNumber > 1) {
+      if (isRedraw) {
+        // For redraw, get all pages and find the previous page's image
+        const storyData = await getStoryWithPagesBySlug(storyId);
+        if (storyData) {
+          const previousPage = storyData.pages.find(p => p.pageNumber === pageNumber - 1);
+          if (previousPage?.generatedImageUrl) {
+            referenceImages.push(previousPage.generatedImageUrl);
+          }
+        }
+      } else {
+        // For new page, use the last page image
+        const lastPageImage = await getLastPageImage(story.id);
+        if (lastPageImage) {
+          referenceImages.push(lastPageImage);
+        }
       }
     }
 

@@ -15,11 +15,12 @@ interface PageData {
 interface ComicCanvasProps {
   page: PageData;
   onInfoClick?: () => void;
+  onRedrawClick?: () => void;
   onNextPage?: () => void;
   onPrevPage?: () => void;
 }
 
-export function ComicCanvas({ page, onInfoClick, onNextPage, onPrevPage }: ComicCanvasProps) {
+export function ComicCanvas({ page, onInfoClick, onRedrawClick, onNextPage, onPrevPage }: ComicCanvasProps) {
   return (
     <main className="flex-1 overflow-auto p-4 md:p-8 flex items-start justify-center relative">
       {/* Dot grid background */}
@@ -76,6 +77,7 @@ export function ComicCanvas({ page, onInfoClick, onNextPage, onPrevPage }: Comic
           <Button
             variant="ghost"
             className="hover:bg-secondary text-muted-foreground hover:text-white gap-2 text-xs h-9 px-3"
+            onClick={onRedrawClick}
           >
             <RefreshCw className="w-4 h-4" />
             <span>Redraw</span>
@@ -90,6 +92,7 @@ export function ComicCanvas({ page, onInfoClick, onNextPage, onPrevPage }: Comic
             <Button
               variant="ghost"
               className="hover:bg-secondary text-muted-foreground hover:text-white gap-2 text-xs h-9 px-3 flex-1"
+              onClick={onRedrawClick}
             >
               <RefreshCw className="w-4 h-4" />
               <span>Redraw</span>

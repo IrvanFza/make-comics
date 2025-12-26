@@ -12,7 +12,6 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { useKeyboardShortcut } from "@/hooks/use-keyboard-shortcut";
 import { validateFileForUpload, generateFilePreview } from "@/lib/file-utils";
-import { COMIC_STYLES } from "@/lib/constants";
 
 interface GeneratePageModalProps {
   isOpen: boolean;
@@ -23,6 +22,8 @@ interface GeneratePageModalProps {
     characterUrls?: string[];
   }) => void;
   pageNumber: number;
+  isRedrawMode?: boolean;
+  existingPrompt?: string;
 }
 
 export function GeneratePageModal({
@@ -30,6 +31,8 @@ export function GeneratePageModal({
   onClose,
   onGenerate,
   pageNumber,
+  isRedrawMode = false,
+  existingPrompt = "",
 }: GeneratePageModalProps) {
   const [prompt, setPrompt] = useState("");
   const [uploadedFiles, setUploadedFiles] = useState<File[]>([]);
@@ -42,13 +45,13 @@ export function GeneratePageModal({
   // Reset form when modal opens
   useEffect(() => {
     if (isOpen) {
-      setPrompt("");
+      setPrompt(isRedrawMode ? existingPrompt : "");
       setUploadedFiles([]);
       setPreviews([]);
       setShowPreview(null);
       setIsGenerating(false);
     }
-  }, [isOpen]);
+  }, [isOpen, isRedrawMode, existingPrompt]);
 
   // Keyboard shortcut for form submission
   useKeyboardShortcut(() => {
@@ -138,7 +141,7 @@ export function GeneratePageModal({
         <DialogContent className="border border-border/50 rounded-lg bg-background max-w-lg">
           <DialogHeader>
             <DialogTitle className="text-xl text-white font-heading">
-              Generate Page {pageNumber}
+              {isRedrawMode ? `Redraw Page ${pageNumber}` : `Generate Page ${pageNumber}`}
             </DialogTitle>
           </DialogHeader>
 
@@ -155,7 +158,7 @@ export function GeneratePageModal({
                 <textarea
                   value={prompt}
                   onChange={(e) => setPrompt(e.target.value)}
-                  placeholder="Continue the story... Describe what happens next."
+                  placeholder={isRedrawMode ? "Tweak the prompt to improve this page..." : "Continue the story... Describe what happens next."}
                   disabled={isGenerating}
                   className="w-full bg-transparent border-none text-sm text-white placeholder-muted-foreground/50 focus:ring-0 focus:outline-none resize-none h-20 leading-relaxed tracking-tight"
                 />
@@ -226,7 +229,10 @@ export function GeneratePageModal({
             </div>
 
             <div className="text-xs text-muted-foreground/70">
-              Automatically references previous pages and existing characters from your story.
+              {isRedrawMode
+                ? "This will replace the current page with a new version. Previous pages and characters are automatically referenced."
+                : "Automatically references previous pages and existing characters from your story."
+              }
             </div>
 
             <Button
@@ -237,10 +243,10 @@ export function GeneratePageModal({
               {isGenerating ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin" />
-                  <span>Generating page...</span>
+                  <span>{isRedrawMode ? "Redrawing page..." : "Generating page..."}</span>
                 </>
               ) : (
-                `Generate Page ${pageNumber}`
+                `${isRedrawMode ? "Redraw" : "Generate"} Page ${pageNumber}`
               )}
             </Button>
           </div>
