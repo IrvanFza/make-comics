@@ -6,6 +6,8 @@ import {
   createPage,
   getNextPageNumber,
   getStoryWithPagesBySlug,
+  getLastPageImage,
+  getStoryCharacterImages,
 } from "@/lib/db-actions";
 import { freeTierRateLimit } from "@/lib/rate-limit";
 import { uploadImageToS3 } from "@/lib/s3-upload";
@@ -84,6 +86,24 @@ export async function POST(request: NextRequest) {
 
     const dimensions = FIXED_DIMENSIONS;
 
+    // Collect reference images: previous page + story characters + current characters
+    let referenceImages: string[] = [];
+
+    // Get previous page image for style consistency (unless it's page 1)
+    if (nextPageNumber > 1) {
+      const lastPageImage = await getLastPageImage(story.id);
+      if (lastPageImage) {
+        referenceImages.push(lastPageImage);
+      }
+    }
+
+    // Get story character images (up to 2 most recent)
+    const storyCharacterImages = await getStoryCharacterImages(story.id);
+    referenceImages.push(...storyCharacterImages.slice(-2)); // Take last 2
+
+    // Add current character images to references
+    referenceImages.push(...characterImages);
+
     // Build the prompt with continuation context
     const previousPages = pages.map(p => ({
       prompt: p.prompt,
@@ -108,7 +128,7 @@ export async function POST(request: NextRequest) {
         width: dimensions.width,
         height: dimensions.height,
         temperature: 0.1,
-        reference_images: characterImages.length > 0 ? characterImages : undefined,
+        reference_images: referenceImages.length > 0 ? referenceImages : undefined,
       });
     } catch (error) {
       console.error("Together AI API error:", error);

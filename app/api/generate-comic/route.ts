@@ -7,6 +7,8 @@ import {
   createPage,
   getNextPageNumber,
   getStoryById,
+  getLastPageImage,
+  getStoryCharacterImages,
 } from "@/lib/db-actions";
 import { freeTierRateLimit } from "@/lib/rate-limit";
 import { COMIC_STYLES } from "@/lib/constants";
@@ -89,9 +91,11 @@ export async function POST(request: NextRequest) {
 
     let page;
     let story;
+    let referenceImages: string[] = [];
 
     if (storyId) {
-      const story = await getStoryById(storyId);
+      // Continuation: get previous page image and story character images
+      story = await getStoryById(storyId);
       if (!story) {
         return NextResponse.json({ error: "Story not found" }, { status: 404 });
       }
@@ -103,7 +107,20 @@ export async function POST(request: NextRequest) {
         prompt,
         characterImageUrls: characterImages,
       });
+
+      // Get previous page image for style consistency (unless it's page 1)
+      if (nextPageNumber > 1) {
+        const lastPageImage = await getLastPageImage(storyId);
+        if (lastPageImage) {
+          referenceImages.push(lastPageImage);
+        }
+      }
+
+      // Get story character images (up to 2 most recent)
+      const storyCharacterImages = await getStoryCharacterImages(storyId);
+      referenceImages.push(...storyCharacterImages.slice(-2)); // Take last 2
     } else {
+      // New story: no previous page reference
       story = await createStory({
         title: prompt.length > 50 ? prompt.substring(0, 50) + "..." : prompt,
         description: undefined,
@@ -118,6 +135,9 @@ export async function POST(request: NextRequest) {
         characterImageUrls: characterImages,
       });
     }
+
+    // Add current character images to references
+    referenceImages.push(...characterImages);
 
     const dimensions = FIXED_DIMENSIONS;
 
@@ -139,8 +159,7 @@ export async function POST(request: NextRequest) {
         width: dimensions.width,
         height: dimensions.height,
         temperature: 0.1, // Lower temperature for more consistent face matching
-        reference_images:
-          characterImages.length > 0 ? characterImages : undefined,
+        reference_images: referenceImages.length > 0 ? referenceImages : undefined,
       });
     } catch (error) {
       console.error("Together AI API error:", error);
