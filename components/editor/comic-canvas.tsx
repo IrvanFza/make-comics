@@ -1,6 +1,6 @@
 "use client";
 
-import { RefreshCw, Download, Info } from "lucide-react";
+import { RefreshCw, Download, Info, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
 interface PageData {
@@ -8,19 +8,22 @@ interface PageData {
   title: string;
   image: string;
   prompt: string;
-  characterUpload?: string;
+  characterUploads?: string[];
   style: string;
+  dbId?: string;
 }
 
 interface ComicCanvasProps {
   page: PageData;
+  pageIndex: number;
+  isLoading?: boolean;
   onInfoClick?: () => void;
   onRedrawClick?: () => void;
   onNextPage?: () => void;
   onPrevPage?: () => void;
 }
 
-export function ComicCanvas({ page, onInfoClick, onRedrawClick, onNextPage, onPrevPage }: ComicCanvasProps) {
+export function ComicCanvas({ page, pageIndex, isLoading = false, onInfoClick, onRedrawClick, onNextPage, onPrevPage }: ComicCanvasProps) {
   return (
     <main className="flex-1 overflow-auto p-4 md:p-8 flex items-start justify-center relative">
       {/* Dot grid background */}
@@ -78,9 +81,14 @@ export function ComicCanvas({ page, onInfoClick, onRedrawClick, onNextPage, onPr
             variant="ghost"
             className="hover:bg-secondary text-muted-foreground hover:text-white gap-2 text-xs h-9 px-3"
             onClick={onRedrawClick}
+            disabled={isLoading}
           >
-            <RefreshCw className="w-4 h-4" />
-            <span>Redraw</span>
+            {isLoading ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : (
+              <RefreshCw className="w-4 h-4" />
+            )}
+            <span>{isLoading ? "Redrawing..." : "Redraw"}</span>
           </Button>
         </div>
 
@@ -93,9 +101,14 @@ export function ComicCanvas({ page, onInfoClick, onRedrawClick, onNextPage, onPr
               variant="ghost"
               className="hover:bg-secondary text-muted-foreground hover:text-white gap-2 text-xs h-9 px-3 flex-1"
               onClick={onRedrawClick}
+              disabled={isLoading}
             >
-              <RefreshCw className="w-4 h-4" />
-              <span>Redraw</span>
+              {isLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <RefreshCw className="w-4 h-4" />
+              )}
+              <span>{isLoading ? "Redrawing..." : "Redraw"}</span>
             </Button>
 
             <Button

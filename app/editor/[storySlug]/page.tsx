@@ -287,6 +287,8 @@ export default function StoryEditorPage() {
         />
         <ComicCanvas
           page={pages[currentPage]}
+          pageIndex={currentPage}
+          isLoading={loadingPageId === currentPage}
           onInfoClick={() => setShowInfoSheet(true)}
           onRedrawClick={handleRedrawPage}
           onNextPage={() =>
