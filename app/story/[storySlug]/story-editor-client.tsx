@@ -65,6 +65,10 @@ export function StoryEditorClient() {
   const { toast } = useToast();
   const [apiKey, setApiKey] = useApiKey();
 
+  const handleTitleUpdate = (newTitle: string) => {
+    setStory(prev => prev ? { ...prev, title: newTitle } : null);
+  };
+
   // Load story and pages from API
   useEffect(() => {
     const loadStoryData = async () => {
@@ -423,6 +427,7 @@ export function StoryEditorClient() {
         onDownloadPDF={downloadPDF}
         isGeneratingPDF={isGeneratingPDF}
         isOwner={isOwner}
+        onTitleUpdate={handleTitleUpdate}
       />
 
       <div className="flex-1 flex overflow-hidden">
