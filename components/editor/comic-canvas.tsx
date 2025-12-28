@@ -174,29 +174,57 @@ export function ComicCanvas({
               </Button>
             )}
 
-            <Button
-              variant="ghost"
-              className="hover:bg-secondary text-muted-foreground hover:text-white gap-2 text-xs h-9 px-3 flex-1"
-              onClick={async () => {
-                const url = window.location.href;
-                try {
-                  await navigator.clipboard.writeText(url);
-                  toast({
-                    title: "Link copied!",
-                    description: "Story URL has been copied to your clipboard.",
-                    duration: 2000,
-                  });
-                } catch (err) {
-                  console.error("Failed to copy URL:", err);
-                  toast({
-                    title: "Failed to copy",
-                    description: "Could not copy the URL to clipboard.",
-                    variant: "destructive",
-                    duration: 3000,
-                  });
-                }
-              }}
-            >
+             <Button
+               variant="ghost"
+               className="hover:bg-secondary text-muted-foreground hover:text-white gap-2 text-xs h-9 px-3 flex-1"
+               onClick={async () => {
+                 const url = window.location.href;
+                 if (navigator.share) {
+                   try {
+                     await navigator.share({
+                       title: page.title || "Comic Page",
+                       url: url,
+                     });
+                   } catch (err) {
+                     // User cancelled or error, fallback to clipboard
+                     try {
+                       await navigator.clipboard.writeText(url);
+                       toast({
+                         title: "Link copied!",
+                         description: "Story URL has been copied to your clipboard.",
+                         duration: 2000,
+                       });
+                     } catch (clipboardErr) {
+                       console.error("Failed to share or copy URL:", clipboardErr);
+                       toast({
+                         title: "Failed to share",
+                         description: "Could not share or copy the URL.",
+                         variant: "destructive",
+                         duration: 3000,
+                       });
+                     }
+                   }
+                 } else {
+                   // Fallback to clipboard for non-mobile browsers
+                   try {
+                     await navigator.clipboard.writeText(url);
+                     toast({
+                       title: "Link copied!",
+                       description: "Story URL has been copied to your clipboard.",
+                       duration: 2000,
+                     });
+                   } catch (err) {
+                     console.error("Failed to copy URL:", err);
+                     toast({
+                       title: "Failed to copy",
+                       description: "Could not copy the URL to clipboard.",
+                       variant: "destructive",
+                       duration: 3000,
+                     });
+                   }
+                 }
+               }}
+             >
               <Share className="w-4 h-4" />
               <span>Share</span>
             </Button>
