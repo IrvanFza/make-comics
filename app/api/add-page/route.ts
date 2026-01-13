@@ -140,7 +140,7 @@ export async function POST(request: NextRequest) {
     });
 
     const client = new Together({
-      apiKey: process.env.TOGETHER_API_KEY_DEFAULT,
+      apiKey: process.env.TOGETHER_API_KEY,
     });
 
     let response;

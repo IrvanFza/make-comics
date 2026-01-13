@@ -65,7 +65,7 @@ export async function POST(request: NextRequest) {
 
     if (isUsingFreeTier) {
       // Use default API key for free tier
-      finalApiKey = process.env.TOGETHER_API_KEY_DEFAULT;
+      finalApiKey = process.env.TOGETHER_API_KEY
       if (!finalApiKey) {
         return NextResponse.json(
           {

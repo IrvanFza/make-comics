@@ -11,6 +11,7 @@ import { COMIC_STYLES } from "@/lib/constants";
 import { useKeyboardShortcut } from "@/hooks/use-keyboard-shortcut";
 import { useApiKey } from "@/hooks/use-api-key";
 import { isContentPolicyViolation } from "@/lib/utils";
+import { ApiKeyModal } from "@/components/api-key-modal";
 
 interface ComicCreationFormProps {
   prompt: string;
@@ -23,11 +24,14 @@ interface ComicCreationFormProps {
   setIsLoading: (loading: boolean) => void;
 }
 
+const DEFAULT_STYLE = 'noir';
+const STYLE_STORAGE_KEY = 'comic-style-preference';
+
 export function ComicCreationForm({
   prompt,
   setPrompt,
-  style,
-  setStyle,
+  style: initialStyle,
+  setStyle: setParentStyle,
   characterFiles,
   setCharacterFiles,
   isLoading,
@@ -39,11 +43,22 @@ export function ComicCreationForm({
   const { uploadToS3 } = useS3Upload();
   const { isSignedIn, isLoaded } = useAuth();
   const { openSignIn } = useClerk();
-  const [apiKey] = useApiKey();
+  const [apiKey, setApiKey] = useApiKey();
   const hasApiKey = !!apiKey;
   const [previews, setPreviews] = useState<string[]>([]);
   const [showPreview, setShowPreview] = useState<number | null>(null);
   const [showStyleDropdown, setShowStyleDropdown] = useState(false);
+  const [creditsRemaining, setCreditsRemaining] = useState<number | null>(null);
+  const [showApiModal, setShowApiModal] = useState(false);
+
+  // Initialize style with saved preference or default
+  const [style, setStyle] = useState(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem(STYLE_STORAGE_KEY);
+      return saved || initialStyle || DEFAULT_STYLE;
+    }
+    return initialStyle || DEFAULT_STYLE;
+  });
   const fileInputRef = useRef<HTMLInputElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -77,6 +92,38 @@ export function ComicCreationForm({
       setPrompt(saved);
     }
   }, []); // Run only on mount
+
+  // Save style to localStorage and sync with parent
+  useEffect(() => {
+    localStorage.setItem(STYLE_STORAGE_KEY, style);
+    setParentStyle(style);
+  }, [style, setParentStyle]);
+
+  // Fetch credits on mount
+  useEffect(() => {
+    if (isSignedIn && !hasApiKey) {
+      const fetchCredits = async () => {
+        try {
+          const response = await fetch('/api/check-credits', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({ hasApiKey: false }),
+          });
+          const data = await response.json();
+          if (response.ok) {
+            setCreditsRemaining(data.creditsRemaining);
+          }
+        } catch (error) {
+          console.error('Error fetching credits:', error);
+        }
+      };
+      fetchCredits();
+    } else if (hasApiKey) {
+      setCreditsRemaining(null); // Unlimited
+    }
+  }, [isSignedIn, hasApiKey]);
 
   // Keyboard shortcut for form submission
   useKeyboardShortcut(() => {
@@ -151,15 +198,33 @@ export function ComicCreationForm({
     setLoadingStep(0);
 
     try {
-      if (!apiKey) {
-        toast({
-          title: "API key required",
-          description: "Please add your API key to generate comics.",
-          variant: "destructive",
-          duration: 3000,
+      // Check credits
+      const hasApiKey = !!apiKey;
+      if (!hasApiKey) {
+        const creditsResponse = await fetch('/api/check-credits', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ hasApiKey }),
         });
-        setIsLoading(false);
-        return;
+        const creditsData = await creditsResponse.json();
+
+        if (!creditsResponse.ok) {
+          toast({
+            title: "Error",
+            description: "Failed to check credits",
+            variant: "destructive",
+          });
+          setIsLoading(false);
+          return;
+        }
+
+        if (creditsData.creditsRemaining === 0) {
+          setShowApiModal(true);
+          setIsLoading(false);
+          return;
+        }
       }
 
       const characterUploads = await Promise.all(
@@ -174,7 +239,7 @@ export function ComicCreationForm({
         },
         body: JSON.stringify({
           prompt,
-          apiKey,
+          ...(apiKey && { apiKey }),
           style,
           characterImages: characterUploads,
         }),
@@ -212,6 +277,11 @@ export function ComicCreationForm({
       });
       setIsLoading(false);
     }
+  };
+
+  const handleApiKeySubmit = (key: string) => {
+    setApiKey(key);
+    setShowApiModal(false);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
@@ -418,7 +488,7 @@ export function ComicCreationForm({
               {hasApiKey ? (
                 <>Using your API key (~$0.01 per comic)</>
               ) : (
-                <>1 credit weekly</>
+                <>{creditsRemaining !== null ? `${creditsRemaining} credit${creditsRemaining === 1 ? '' : 's'} remaining` : 'Checking credits...'}</>
               )}
             </div>
           </div>
@@ -431,6 +501,12 @@ export function ComicCreationForm({
           </SignInButton>
         )}
       </div>
+
+      <ApiKeyModal
+        isOpen={showApiModal}
+        onClose={() => setShowApiModal(false)}
+        onSubmit={handleApiKeySubmit}
+      />
     </>
   );
 }

@@ -167,16 +167,55 @@ export function StoryEditorClient() {
   }, [pages.length, apiKey]);
 
 
-  const handleAddPage = () => {
+  const handleAddPage = async () => {
     if (!isLoaded || !isSignedIn) {
       return;
     }
-    
-    if (!apiKey && pages.length >= 1) {
-      setShowApiModal(true);
-      return;
+
+    // Check credits
+    try {
+      const hasApiKey = !!apiKey;
+      const response = await fetch('/api/check-credits', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ hasApiKey }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        toast({
+          title: "Error",
+          description: "Failed to check credits",
+          variant: "destructive",
+        });
+        return;
+      }
+
+      if (hasApiKey || data.creditsRemaining === "unlimited") {
+        // Has API key, unlimited
+        setShowGenerateModal(true);
+      } else if (data.creditsRemaining > 0) {
+        // Has credits
+        setShowGenerateModal(true);
+        } else {
+          // No credits left, show API modal
+          setShowApiModal(true);
+          toast({
+            title: "No credits remaining",
+            description: "You get 1 credit weekly. Add an API key for unlimited generation.",
+            variant: "destructive",
+          });
+        }
+    } catch (error) {
+      console.error("Error checking credits:", error);
+      toast({
+        title: "Error",
+        description: "Failed to check credits",
+        variant: "destructive",
+      });
     }
-    setShowGenerateModal(true);
   };
 
   const handleRedrawPage = () => {
