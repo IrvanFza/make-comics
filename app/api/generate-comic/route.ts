@@ -9,7 +9,6 @@ import {
   getNextPageNumber,
   getStoryById,
   getLastPageImage,
-  getStoryCharacterImages,
   deletePage,
   deleteStory,
 } from "@/lib/db-actions";
@@ -17,7 +16,10 @@ import { freeTierRateLimit } from "@/lib/rate-limit";
 import { COMIC_STYLES } from "@/lib/constants";
 import { uploadImageToS3 } from "@/lib/s3-upload";
 import { buildComicPrompt } from "@/lib/prompt";
-import { isContentPolicyViolation, getContentPolicyErrorMessage } from "@/lib/utils";
+import {
+  isContentPolicyViolation,
+  getContentPolicyErrorMessage,
+} from "@/lib/utils";
 
 const NEW_MODEL = false;
 
@@ -29,7 +31,7 @@ const FIXED_DIMENSIONS = NEW_MODEL
   ? { width: 896, height: 1200 }
   : { width: 864, height: 1184 };
 
-const TEXT_MODEL = "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo";
+const TEXT_MODEL = "Qwen/Qwen3-Next-80B-A3B-Instruct";
 
 export async function POST(request: NextRequest) {
   try {
@@ -38,7 +40,7 @@ export async function POST(request: NextRequest) {
     if (!userId) {
       return NextResponse.json(
         { error: "Authentication required" },
-        { status: 401 }
+        { status: 401 },
       );
     }
 
@@ -55,7 +57,7 @@ export async function POST(request: NextRequest) {
     if (!prompt) {
       return NextResponse.json(
         { error: "Missing required fields" },
-        { status: 400 }
+        { status: 400 },
       );
     }
 
@@ -65,18 +67,16 @@ export async function POST(request: NextRequest) {
 
     if (isUsingFreeTier) {
       // Use default API key for free tier
-      finalApiKey = process.env.TOGETHER_API_KEY
+      finalApiKey = process.env.TOGETHER_API_KEY;
       if (!finalApiKey) {
         return NextResponse.json(
           {
             error: "Server configuration error - default API key not available",
           },
-          { status: 500 }
+          { status: 500 },
         );
       }
     }
-
-
 
     let page;
     let story;
@@ -253,16 +253,23 @@ Only return the JSON, no other text.`;
           await deletePage(page.id);
         }
       } catch (cleanupError) {
-        console.error("Error cleaning up DB on image generation failure:", cleanupError);
+        console.error(
+          "Error cleaning up DB on image generation failure:",
+          cleanupError,
+        );
       }
 
-      if (error instanceof Error && error.message && isContentPolicyViolation(error.message)) {
+      if (
+        error instanceof Error &&
+        error.message &&
+        isContentPolicyViolation(error.message)
+      ) {
         return NextResponse.json(
           {
             error: getContentPolicyErrorMessage(),
             errorType: "content_policy",
           },
-          { status: 400 }
+          { status: 400 },
         );
       }
 
@@ -275,7 +282,7 @@ Only return the JSON, no other text.`;
                 "Insufficient API credits. Please add credits to your Together.ai account at https://api.together.ai/settings/billing or update your API key.",
               errorType: "credit_limit",
             },
-            { status: 402 }
+            { status: 402 },
           );
         }
         return NextResponse.json(
@@ -283,7 +290,7 @@ Only return the JSON, no other text.`;
             error: error.message || `Failed to generate image: ${status}`,
             errorType: "api_error",
           },
-          { status: status || 500 }
+          { status: status || 500 },
         );
       }
 
@@ -293,14 +300,14 @@ Only return the JSON, no other text.`;
             error instanceof Error ? error.message : "Unknown error"
           }`,
         },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
     if (!response.data || !response.data[0] || !response.data[0].url) {
       return NextResponse.json(
         { error: "No image URL in response" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -345,7 +352,7 @@ Only return the JSON, no other text.`;
       console.error("Error updating page in database:", dbError);
       return NextResponse.json(
         { error: "Failed to save generated image" },
-        { status: 500 }
+        { status: 500 },
       );
     }
 
@@ -354,7 +361,10 @@ Only return the JSON, no other text.`;
       try {
         await freeTierRateLimit.limit(userId);
       } catch (rateLimitError) {
-        console.error("Error applying rate limit after successful generation:", rateLimitError);
+        console.error(
+          "Error applying rate limit after successful generation:",
+          rateLimitError,
+        );
         // Don't fail the request if rate limiting fails, just log it
       }
     }
@@ -380,7 +390,7 @@ Only return the JSON, no other text.`;
           error instanceof Error ? error.message : "Unknown error"
         }`,
       },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
