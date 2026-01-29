@@ -1,58 +1,58 @@
-"use client";
+"use client"
 
-import type React from "react";
-import { useState, useEffect } from "react";
-import { Key, ExternalLink, ArrowRight, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import type React from "react"
+import { useState, useEffect } from "react"
+import { Key, ExternalLink, ArrowRight, X } from "lucide-react"
+import { Button } from "@/components/ui/button"
+import { Input } from "@/components/ui/input"
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogDescription,
-} from "@/components/ui/dialog";
-import { TOGETHER_LINK } from "@/lib/utils";
-import { useApiKey } from "@/hooks/use-api-key";
+} from "@/components/ui/dialog"
+import { TOGETHER_LINK } from "@/lib/utils"
+import { useApiKey } from "@/hooks/use-api-key"
 
 interface ApiKeyModalProps {
-  isOpen: boolean;
-  onClose: () => void;
-  onSubmit: (key: string) => void;
+  isOpen: boolean
+  onClose: () => void
+  onSubmit: (key: string) => void
 }
 
 export function ApiKeyModal({ isOpen, onClose, onSubmit }: ApiKeyModalProps) {
-  const [apiKeyInput, setApiKeyInput] = useState("");
-  const [isLoading, setIsLoading] = useState(false);
-  const [existingKey, setApiKey] = useApiKey();
+  const [apiKeyInput, setApiKeyInput] = useState("")
+  const [isLoading, setIsLoading] = useState(false)
+  const [existingKey, setApiKey] = useApiKey()
 
   useEffect(() => {
     if (isOpen) {
       setApiKeyInput((current) => {
         if (existingKey && current === "") {
-          return existingKey;
+          return existingKey
         }
-        return current;
-      });
+        return current
+      })
     }
-  }, [isOpen, existingKey]);
+  }, [isOpen, existingKey])
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!apiKeyInput.trim()) return;
+    e.preventDefault()
+    if (!apiKeyInput.trim()) return
 
-    setIsLoading(true);
-    await new Promise((resolve) => setTimeout(resolve, 500));
-    setIsLoading(false);
-    onSubmit(apiKeyInput.trim());
-    setApiKeyInput("");
-  };
+    setIsLoading(true)
+    await new Promise((resolve) => setTimeout(resolve, 500))
+    setIsLoading(false)
+    onSubmit(apiKeyInput.trim())
+    setApiKeyInput("")
+  }
 
   const handleDelete = () => {
-    setApiKey(null);
-    setApiKeyInput("");
-    onClose();
-  };
+    setApiKey(null)
+    setApiKeyInput("")
+    onClose()
+  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -70,11 +70,11 @@ export function ApiKeyModal({ isOpen, onClose, onSubmit }: ApiKeyModalProps) {
               : "Add your API key to continue"}
           </DialogTitle>
 
-           <DialogDescription className="text-center text-muted-foreground">
-             {existingKey
-               ? "Update your Together API key or add a new one. You can also delete your existing key."
-                : "You've used all your weekly credits! Add your Together API key for unlimited generation."}
-           </DialogDescription>
+          <DialogDescription className="text-center text-muted-foreground">
+            {existingKey
+              ? "Update your Together API key or add a new one. You can also delete your existing key."
+              : "You've used all your weekly credits! Add your Together API key for unlimited generation."}
+          </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="space-y-4 mt-4">
@@ -105,7 +105,7 @@ export function ApiKeyModal({ isOpen, onClose, onSubmit }: ApiKeyModalProps) {
             rel="noopener noreferrer"
             className="text-sm text-indigo hover:text-indigo-light flex items-center gap-1.5 transition-colors"
           >
-            Get your free API key
+            Get your Together API key
             <ExternalLink className="h-3.5 w-3.5" />
           </a>
 
@@ -136,5 +136,5 @@ export function ApiKeyModal({ isOpen, onClose, onSubmit }: ApiKeyModalProps) {
         </div>
       </DialogContent>
     </Dialog>
-  );
+  )
 }
