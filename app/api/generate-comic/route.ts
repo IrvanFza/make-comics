@@ -17,6 +17,10 @@ import { COMIC_STYLES } from "@/lib/constants";
 import { uploadImageToS3 } from "@/lib/s3-upload";
 import { buildComicPrompt } from "@/lib/prompt";
 import {
+  generateStoryMetadata,
+  type StoryMetadata,
+} from "@/lib/story-metadata";
+import {
   isContentPolicyViolation,
   getContentPolicyErrorMessage,
 } from "@/lib/utils";
@@ -30,8 +34,6 @@ const IMAGE_MODEL = NEW_MODEL
 const FIXED_DIMENSIONS = NEW_MODEL
   ? { width: 896, height: 1200 }
   : { width: 864, height: 1184 };
-
-const TEXT_MODEL = "Qwen/Qwen3.5-9B";
 
 export async function POST(request: NextRequest) {
   try {
@@ -143,76 +145,18 @@ export async function POST(request: NextRequest) {
     const client = new Together({ apiKey: finalApiKey });
 
     // Generate title and description in parallel with image generation (only for new stories)
-    let titleGenerationPromise: Promise<{
-      title: string;
-      description: string;
-    }> | null = null;
+    let titleGenerationPromise: Promise<StoryMetadata> | null = null;
     if (!storyId) {
       titleGenerationPromise = (async () => {
         try {
-          const titlePrompt = `Based on this comic book prompt, generate a compelling title and description for the comic book.
-
-Prompt: "${prompt}"
-Style: ${COMIC_STYLES.find((s) => s.id === style)?.name || style}
-
-Generate:
-1. A catchy, engaging title (maximum 60 characters)
-2. A brief description (2-3 sentences, maximum 200 characters)
-
-Format your response as JSON:
-{
-  "title": "Title here",
-  "description": "Description here"
-}
-
-Only return the JSON, no other text.`;
-
-          const textResponse = await client.chat.completions.create({
-            model: TEXT_MODEL,
-            messages: [
-              {
-                role: "system",
-                content:
-                  "You are a creative assistant that generates compelling comic book titles and descriptions. Always respond with valid JSON only.",
-              },
-              {
-                role: "user",
-                content: titlePrompt,
-              },
-            ],
-            temperature: 0.8,
-            max_tokens: 300,
+          return await generateStoryMetadata({
+            createCompletion: (request) =>
+              client.chat.completions.create(request),
+            prompt,
+            styleName:
+              COMIC_STYLES.find((comicStyle) => comicStyle.id === style)?.name ||
+              style,
           });
-
-          const content = textResponse.choices[0]?.message?.content?.trim();
-          if (!content) {
-            throw new Error("No response from text generation");
-          }
-
-          // Extract JSON from response (in case there's extra text)
-          const jsonMatch = content.match(/\{[\s\S]*\}/);
-          if (!jsonMatch) {
-            throw new Error("No JSON found in response");
-          }
-
-          const parsed = JSON.parse(jsonMatch[0]);
-          const rawTitle =
-            parsed.title?.trim() ||
-            (prompt.length > 50 ? prompt.substring(0, 50) + "..." : prompt);
-          const rawDescription = parsed.description?.trim();
-
-          // Enforce character limits
-          const title =
-            rawTitle.length > 60 ? rawTitle.substring(0, 57) + "..." : rawTitle;
-          const description =
-            rawDescription && rawDescription.length > 200
-              ? rawDescription.substring(0, 197) + "..."
-              : rawDescription;
-
-          return {
-            title,
-            description: description || undefined,
-          };
         } catch (error) {
           console.error("Error generating title and description:", error);
           // Fallback to prompt-based title
