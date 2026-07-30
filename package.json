@@ -6,7 +6,8 @@
     "build": "next build",
     "dev": "next dev",
     "lint": "eslint .",
-    "start": "next start"
+    "start": "next start",
+    "test": "node --test lib/*.test.cts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1070.0",
